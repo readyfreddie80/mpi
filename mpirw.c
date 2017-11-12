@@ -8,13 +8,6 @@
 
 #define MASTER 0
 
-typedef enum {
-    LEFT,
-    RIGHT,
-    UP,
-    DOWN
-} direction_t;
-
 omp_lock_t lock;
 int steps = 10;
 
@@ -41,26 +34,17 @@ void pop(particle_ctx_t **array, int *n, int index) {
     (*n)--;
 }
 
-direction_t get_direction(int s, double p_l,double p_r, double p_u, double p_d){
-    int seed = s; 	
-    double left = rand_r(&seed) * p_l;
-    double right = rand_r(&seed) * p_r;
-    double up = rand_r(&seed) * p_u;
-    double down = rand_r(&seed) * p_d;
 
-    if(left >= right && left >= up && left >= down) {
-        return LEFT;
+int get_direction(double left,double right, double up, double down){
+   if (left >= right && left >= up && left >= down) {
+        return 0;
+    } else if (right >= left && right >= up && right >= down) {
+        return 1;
+    } else if (up >= left && up >= right && up >= down) {
+        return 2;
+    } else {
+        return 3;
     }
-
-    if(right >= left && right >= up && right >= down) {
-        return RIGHT;
-    }
-
-    if(up >= right && up >= left && up >= down) {
-        return UP;
-    }
-
-    return DOWN;
 }
 
 void random_walk(int rank,
@@ -83,23 +67,28 @@ void random_walk(int rank,
     int particles_capacity = N;
     particle_ctx_t *particles = (particle_ctx_t*)malloc(N * sizeof(particle_ctx_t));
 
-    int send_to_cnt[4] = {0};
-    int send_to_capacity[4] = {N};
+    int send_to_cnt[4];
+    int send_to_capacity[4];
     particle_ctx_t *send_to[4];
+
+    int receive_from_capacity[4];
+    particle_ctx_t *receive_from[4];
+
     for(int i = 0; i < 4; i++){
         send_to[i] = (particle_ctx_t*)malloc(N * sizeof(particle_ctx_t));
-    }
+        send_to_cnt[i] = 0;
+        send_to_capacity[i] = N;
+        receive_from_capacity[i] = 0;
 
-    int receive_from_capacity[4] = {0};
-    particle_ctx_t *receive_from[4];
-    int receive_tags[4] = {RIGHT, LEFT, DOWN, UP};
+    }
+    int receive_tags[4] = {1, 0, 3, 2};
 
     //neighbors rank
     int neighbor[4];
-    neighbor[LEFT] = rank - 1;
-    neighbor[RIGHT] = rank + 1;
-    neighbor[UP] = rank - a;
-    neighbor[DOWN] = rank + a;
+    neighbor[0] = rank - 1;
+    neighbor[1] = rank + 1;
+    neighbor[2] = rank - a;
+    neighbor[3] = rank + a;
 
 
     int x = rank % a;
@@ -107,13 +96,13 @@ void random_walk(int rank,
     //if on boarder
     //neighbor_rank = y_n * a + x_n
     if(x == 0)
-        neighbor[LEFT] = rank + (a - 1);
+        neighbor[0] = rank + (a - 1);
     if(x == a - 1)
-        neighbor[RIGHT] = a * y;
+        neighbor[1] = a * y;
     if(y == 0)
-        neighbor[UP] = (size - a) + x;
+        neighbor[2] = (size - a) + x;
     if(y == b - 1)
-        neighbor[DOWN] = x;
+        neighbor[3] = x;
 
     int stopped_cnt = 0;
     int stopped_capacity = N;
@@ -140,43 +129,52 @@ void random_walk(int rank,
                                 i--;
                                 break;
                             }
-                            direction_t dir = get_direction(particles[i].seed, p_l, p_r, p_u, p_d);
-                            if(dir == LEFT) {
+
+                            double left = rand_r((unsigned int*) &particles[i].seed) * p_l;
+                            double right = rand_r((unsigned int*) &particles[i].seed) * p_r;
+                            double up = rand_r((unsigned int*) &particles[i].seed) * p_u;
+                            double down = rand_r((unsigned int*) &particles[i].seed) * p_d;
+
+                            int dir = get_direction(left, right, up, down);
+
+                            //printf("from %d to %d \n",rank, dir);
+                            particles[i].n -= 1;
+                            if(dir == 0) {
                                 particles[i].x -= 1;
                                 if(particles[i].x < 0) {
                                     particles[i].x = l - 1;
-                                    push(&send_to[LEFT], &send_to_cnt[LEFT], &send_to_capacity[LEFT], particles + i);
+                                    push(&send_to[0], &send_to_cnt[0], &send_to_capacity[0], particles + i);
                                     pop(&particles, &particles_cnt, i);
                                     i-= 1;
                                     break;
                                 }
                             }
-                            if(dir == RIGHT) {
+                            if(dir == 1) {
                                 particles[i].x += 1;
                                 if (particles[i].x >= l) {
                                     particles[i].x = 0;
-                                    push(&send_to[RIGHT], &send_to_cnt[RIGHT], &send_to_capacity[RIGHT], particles + i);
+                                    push(&send_to[1], &send_to_cnt[1], &send_to_capacity[1], particles + i);
                                     pop(&particles, &particles_cnt, i);
                                     i -= 1;
                                     break;
 
                                 }
                             }
-                            if(dir == UP) {
+                            if(dir == 2) {
                                 particles[i].y -= 1;
                                 if (particles[i].y < 0) {
                                     particles[i].y = l - 1;
-                                    push(&send_to[UP], &send_to_cnt[UP], &send_to_capacity[UP], particles + i);
+                                    push(&send_to[2], &send_to_cnt[2], &send_to_capacity[2], particles + i);
                                     pop(&particles, &particles_cnt, i);
                                     i -= 1;
                                     break;
                                 }
                             }
-                            if(dir == DOWN) {
+                            if(dir == 3) {
                                 particles[i].y += 1;
                                 if (particles[i].y >= l) {
                                     particles[i].y = 0;
-                                    push(&send_to[DOWN], &send_to_cnt[DOWN], &send_to_capacity[DOWN], particles + i);
+                                    push(&send_to[3], &send_to_cnt[3], &send_to_capacity[3], particles + i);
                                     pop(&particles, &particles_cnt, i);
                                     i -= 1;
                                     break;
@@ -184,8 +182,17 @@ void random_walk(int rank,
                                 }
                             }
                         }
+
+                        /*printf("par %d %d \n",rank, particles_cnt);
+                        printf("l %d %d \n",rank, send_to_cnt[0]);
+                        printf("r %d %d \n",rank, send_to_cnt[1]);
+                        printf("u %d %d \n",rank, send_to_cnt[2]);
+                        printf("d %d %d \n",rank, send_to_cnt[3]);
+                        printf("stopped %d %d \n", rank, stopped_cnt);
+                        */
                         i += 1;
                     }
+
                     omp_unset_lock(&lock);
                 }
             }
@@ -206,7 +213,7 @@ void random_walk(int rank,
                     particles[i].x = rand() % l;
                     particles[i].y = rand() % l;
                     particles[i].n = n;
-                    particles[i].seed = (unsigned int)rand();
+                    particles[i].seed = (int)rand();
                     particles[i].init_node = rank;
                 }
 
@@ -215,7 +222,7 @@ void random_walk(int rank,
                 while (!is_stop) {
 
                     omp_set_lock(&lock);
-                    MPI_Request requests[8];
+                    MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request) * 8);
 
                     for(int i = 0; i < 4; i++)
                         MPI_Isend(&send_to_cnt[i], 1, MPI_INT, neighbor[i], i, MPI_COMM_WORLD, requests + i);
@@ -223,13 +230,16 @@ void random_walk(int rank,
                         MPI_Irecv(&receive_from_capacity[i], 1, MPI_INT, neighbor[i], receive_tags[i], MPI_COMM_WORLD, requests + 4 + i);
                     MPI_Waitall(8, requests, MPI_STATUS_IGNORE);
 
+                    MPI_Request* req = (MPI_Request*) malloc(sizeof(MPI_Request) * 8);
                     for(int i = 0; i < 4; i++)
                         receive_from[i] = (particle_ctx_t*)malloc(receive_from_capacity[i] * sizeof(particle_ctx_t));
                     for(int i = 0; i < 4; i++)
-                        MPI_Issend(send_to[i], sizeof(particle_ctx_t) * send_to_cnt[i], MPI_BYTE, neighbor[i], i, MPI_COMM_WORLD, requests + i);
+                        MPI_Issend(send_to[i], sizeof(particle_ctx_t) * send_to_cnt[i], MPI_BYTE, neighbor[i], i, MPI_COMM_WORLD, req + i);
                     for(int i = 0; i < 4; i++)
-                         MPI_Irecv(receive_from[i], sizeof(particle_ctx_t) * receive_from_capacity[i], MPI_BYTE, neighbor[i], receive_tags[i], MPI_COMM_WORLD, requests + 4 + i);
-                    MPI_Waitall(8, requests, MPI_STATUS_IGNORE);
+                         MPI_Irecv(receive_from[i], sizeof(particle_ctx_t) * receive_from_capacity[i], MPI_BYTE, neighbor[i], receive_tags[i], MPI_COMM_WORLD, req + 4 + i);
+                    MPI_Waitall(8, req, MPI_STATUS_IGNORE);
+                    free(requests);
+                    free(req);
 
                     for(int i = 0; i < 4; i++){
                         for (int j = 0; j < receive_from_capacity[i]; j++) {
@@ -258,6 +268,7 @@ void random_walk(int rank,
                 }
 
                 MPI_Barrier(MPI_COMM_WORLD);
+
 
                 MPI_File data;
                 MPI_File_delete("data.bin", MPI_INFO_NULL);
@@ -335,7 +346,6 @@ int main(int argc, char **argv) {
     if(rank == MASTER) {
         start =  MPI_Wtime();
     }
-
     random_walk(rank, size, l, a, b, n, N, p_l, p_r, p_u, p_d);
 
     if(rank == MASTER) {
