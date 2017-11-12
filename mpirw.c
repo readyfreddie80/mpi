@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <omp.h>
+#include <sys/time.h>
+#include <time.h>
 
 #define MASTER 0
 
@@ -39,7 +41,8 @@ void pop(particle_ctx_t **array, int *n, int index) {
     (*n)--;
 }
 
-direction_t get_direction(int seed, double p_l,double p_r, double p_u, double p_d){
+direction_t get_direction(int s, double p_l,double p_r, double p_u, double p_d){
+    int seed = s; 	
     double left = rand_r(&seed) * p_l;
     double right = rand_r(&seed) * p_r;
     double up = rand_r(&seed) * p_u;
@@ -132,7 +135,7 @@ void random_walk(int rank,
                     while(i < particles_cnt) {
                         for(int j = 0; j < steps; j++) {
                             if(particles[i].n == 0) {
-                                push_back(&stopped, &stopped_cnt, &stopped_capacity, particles + i);
+                                push(&stopped, &stopped_cnt, &stopped_capacity, particles + i);
                                 pop(&particles, &particles_cnt, i);
                                 i--;
                                 break;
@@ -223,7 +226,7 @@ void random_walk(int rank,
                     for(int i = 0; i < 4; i++)
                         receive_from[i] = (particle_ctx_t*)malloc(receive_from_capacity[i] * sizeof(particle_ctx_t));
                     for(int i = 0; i < 4; i++)
-                        MPI_Issend(send_to[i], sizeof(particle_ctx_t) * send_to_cnt[i], MPI_BYTE, neighbor[i], i, MPI_COMM_WORLD, requests + i)
+                        MPI_Issend(send_to[i], sizeof(particle_ctx_t) * send_to_cnt[i], MPI_BYTE, neighbor[i], i, MPI_COMM_WORLD, requests + i);
                     for(int i = 0; i < 4; i++)
                          MPI_Irecv(receive_from[i], sizeof(particle_ctx_t) * receive_from_capacity[i], MPI_BYTE, neighbor[i], receive_tags[i], MPI_COMM_WORLD, requests + 4 + i);
                     MPI_Waitall(8, requests, MPI_STATUS_IGNORE);
@@ -304,7 +307,7 @@ void random_walk(int rank,
     free(stopped);
     free(particles);
     for(int i = 0; i < 4; i++) {
-        free(send_to[i])
+        free(send_to[i]);
     }
 }
 
