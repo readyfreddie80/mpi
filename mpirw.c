@@ -130,10 +130,10 @@ void random_walk(int rank,
                                 break;
                             }
 
-                            double left = rand_r((unsigned int*) &particles[i].seed) * p_l;
-                            double right = rand_r((unsigned int*) &particles[i].seed) * p_r;
-                            double up = rand_r((unsigned int*) &particles[i].seed) * p_u;
-                            double down = rand_r((unsigned int*) &particles[i].seed) * p_d;
+                            double left = rand_r((unsigned int*) &(particles[i].seed)) * p_l;
+                            double right = rand_r((unsigned int*) &(particles[i].seed)) * p_r;
+                            double up = rand_r((unsigned int*) &(particles[i].seed)) * p_u;
+                            double down = rand_r((unsigned int*) &(particles[i].seed)) * p_d;
 
                             int dir = get_direction(left, right, up, down);
 
