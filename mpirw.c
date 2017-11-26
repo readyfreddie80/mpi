@@ -1,3 +1,4 @@
+
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +17,6 @@ typedef struct particle_ctx_t {
 	int x;
 	int y;
 	int n;
-	int seed;
 	int init_node;
 } particle_ctx_t;
 
@@ -130,14 +130,13 @@ void random_walk(int rank,
                                 break;
                             }
 
-                            double left = rand_r((unsigned int*) &(particles[i].seed)) * p_l;
-                            double right = rand_r((unsigned int*) &(particles[i].seed)) * p_r;
-                            double up = rand_r((unsigned int*) &(particles[i].seed)) * p_u;
-                            double down = rand_r((unsigned int*) &(particles[i].seed)) * p_d;
+                            double left = rand() * p_l;
+                            double right = rand() * p_r;
+                            double up = rand() * p_u;
+                            double down = rand() * p_d;
 
                             int dir = get_direction(left, right, up, down);
 
-                            //printf("from %d to %d \n",rank, dir);
                             particles[i].n -= 1;
                             if(dir == 0) {
                                 particles[i].x -= 1;
@@ -182,14 +181,6 @@ void random_walk(int rank,
                                 }
                             }
                         }
-
-                        /*printf("par %d %d \n",rank, particles_cnt);
-                        printf("l %d %d \n",rank, send_to_cnt[0]);
-                        printf("r %d %d \n",rank, send_to_cnt[1]);
-                        printf("u %d %d \n",rank, send_to_cnt[2]);
-                        printf("d %d %d \n",rank, send_to_cnt[3]);
-                        printf("stopped %d %d \n", rank, stopped_cnt);
-                        */
                         i += 1;
                     }
 
@@ -213,7 +204,6 @@ void random_walk(int rank,
                     particles[i].x = rand() % l;
                     particles[i].y = rand() % l;
                     particles[i].n = n;
-                    particles[i].seed = (int)rand();
                     particles[i].init_node = rank;
                 }
 
