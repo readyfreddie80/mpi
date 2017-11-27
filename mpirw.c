@@ -10,7 +10,7 @@
 
 omp_lock_t lock;
 int steps = 10;
-int i, j;
+
 
 typedef struct particle_ctx_t {
 	int x;
@@ -73,7 +73,7 @@ void random_walk(int rank,
     int receive_from_capacity[4];
     particle_ctx_t *receive_from[4];
 
-    for(i = 0; i < 4; i++){
+    for(int i = 0; i < 4; i++){
         send_to[i] = (particle_ctx_t*)malloc(N * sizeof(particle_ctx_t));
         send_to_cnt[i] = 0;
         send_to_capacity[i] = N;
@@ -118,10 +118,10 @@ void random_walk(int rank,
             {
                 while (!is_stop) {
                     omp_set_lock(&lock);
-                    i = 0;
+                    int i = 0;
 
                     while(i < particles_cnt) {
-                        for(j = 0; j < steps; j++) {
+                        for(int j = 0; j < steps; j++) {
                             if(particles[i].n == 0) {
                                 push(&stopped, &stopped_cnt, &stopped_capacity, particles + i);
                                 pop(&particles, &particles_cnt, i);
@@ -191,7 +191,7 @@ void random_walk(int rank,
                 int *seeds = (int*)malloc(size * sizeof(int));
                 if (rank == MASTER){
                       srand(time(NULL));
-                      for (i = 0; i < size; i++)
+                      for (int i = 0; i < size; i++)
                         seeds[i] = (int)rand();
                 }
                 int seed;
@@ -199,7 +199,7 @@ void random_walk(int rank,
                 free(seeds);
 
                 srand(seed);
-                for(i = 0; i < N; i++) {
+                for(int i = 0; i < N; i++) {
                     particles[i].x = rand() % l;
                     particles[i].y = rand() % l;
                     particles[i].n = n;
@@ -213,25 +213,25 @@ void random_walk(int rank,
                     omp_set_lock(&lock);
                     MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request) * 8);
 
-                    for(i = 0; i < 4; i++)
+                    for(int i = 0; i < 4; i++)
                         MPI_Isend(&send_to_cnt[i], 1, MPI_INT, neighbor[i], i, MPI_COMM_WORLD, requests + i);
-                    for(i = 0; i < 4; i++)
+                    for(int i = 0; i < 4; i++)
                         MPI_Irecv(&receive_from_capacity[i], 1, MPI_INT, neighbor[i], receive_tags[i], MPI_COMM_WORLD, requests + 4 + i);
                     MPI_Waitall(8, requests, MPI_STATUS_IGNORE);
 
                     MPI_Request* req = (MPI_Request*) malloc(sizeof(MPI_Request) * 8);
-                    for(i = 0; i < 4; i++)
+                    for(int i = 0; i < 4; i++)
                         receive_from[i] = (particle_ctx_t*)malloc(receive_from_capacity[i] * sizeof(particle_ctx_t));
-                    for(i = 0; i < 4; i++)
+                    for(int i = 0; i < 4; i++)
                         MPI_Issend(send_to[i], sizeof(particle_ctx_t) * send_to_cnt[i], MPI_BYTE, neighbor[i], i, MPI_COMM_WORLD, req + i);
-                    for(i = 0; i < 4; i++)
+                    for(int i = 0; i < 4; i++)
                          MPI_Irecv(receive_from[i], sizeof(particle_ctx_t) * receive_from_capacity[i], MPI_BYTE, neighbor[i], receive_tags[i], MPI_COMM_WORLD, req + 4 + i);
                     MPI_Waitall(8, req, MPI_STATUS_IGNORE);
                     free(requests);
                     free(req);
 
-                    for(i = 0; i < 4; i++){
-                        for (j = 0; j < receive_from_capacity[i]; j++) {
+                    for(int i = 0; i < 4; i++){
+                        for (int j = 0; j < receive_from_capacity[i]; j++) {
                             push(&particles, &particles_cnt, &particles_capacity, receive_from[i] + j);
                         }
                         free(receive_from[i]);
@@ -270,19 +270,19 @@ void random_walk(int rank,
 
                 int **result = calloc(y_size, sizeof(int*));
 
-                for(i = 0; i < y_size; i++) {
+                for(int i = 0; i < y_size; i++) {
                     result[i] = calloc(x_size, sizeof(int));
                 }
 
-                for (i = 0; i < stopped_cnt; i++) {
+                for (int i = 0; i < stopped_cnt; i++) {
                     int y = stopped[i].y;
                     int x = stopped[i].x;
                     int init_node = stopped[i].init_node;
                     result[y][x * size + init_node] += 1;
                 }
-                int y_i, x_i;
-                for (y_i = 0; y_i < y_size; y_i++) {
-                    for (x_i = 0; x_i < l; x_i++) {
+
+                for (int y_i = 0; y_i < y_size; y_i++) {
+                    for (int x_i = 0; x_i < l; x_i++) {
                         int bytes_line = l * size * a * sizeof(int);
                         int bytes_y_i = bytes_line * b_tbl * l + bytes_line * y_i;
                         int bytes_x_i = bytes_y_i + a_tbl * l * size * sizeof(int) + x_i * size * sizeof(int);
@@ -293,7 +293,7 @@ void random_walk(int rank,
 
                 MPI_File_close(&data);
 
-                for (i = 0; i < y_size; i++) {
+                for (int i = 0; i < y_size; i++) {
                     free(result[i]);
                 }
                 free(result);
@@ -306,7 +306,7 @@ void random_walk(int rank,
     free(all_nodes);
     free(stopped);
     free(particles);
-    for(i = 0; i < 4; i++) {
+    for(int i = 0; i < 4; i++) {
         free(send_to[i]);
     }
 }
@@ -327,8 +327,8 @@ int main(int argc, char **argv) {
 
 
     int rank, size;
-	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
     omp_set_num_threads(2);
 
     double start, end;
