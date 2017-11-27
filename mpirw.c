@@ -9,7 +9,7 @@
 #define MASTER 0
 
 omp_lock_t lock;
-int steps = 10;
+int steps = 100;
 
 
 typedef struct particle_ctx_t {
@@ -268,35 +268,25 @@ void random_walk(int rank,
                 int y_size = l;
                 int x_size = l * size;
 
-                int **result = calloc(y_size, sizeof(int*));
-
-                for(int i = 0; i < y_size; i++) {
-                    result[i] = calloc(x_size, sizeof(int));
-                }
-
-                for (int i = 0; i < stopped_cnt; i++) {
-                    int y = stopped[i].y;
-                    int x = stopped[i].x;
-                    int init_node = stopped[i].init_node;
-                    result[y][x * size + init_node] += 1;
-                }
-
-                for (int y_i = 0; y_i < y_size; y_i++) {
-                    for (int x_i = 0; x_i < l; x_i++) {
-                        int bytes_line = l * size * a * sizeof(int);
-                        int bytes_y_i = bytes_line * b_tbl * l + bytes_line * y_i;
-                        int bytes_x_i = bytes_y_i + a_tbl * l * size * sizeof(int) + x_i * size * sizeof(int);
-                        MPI_File_set_view(data, bytes_x_i, MPI_INT, MPI_INT, "native", MPI_INFO_NULL);
-                        MPI_File_write(data, &result[y_i][x_i * size], size, MPI_INT, MPI_STATUS_IGNORE);
+                int result[y_size][x_size];
+                for (int i = 0; i < y_size; i++) {
+                    for (int j = 0; j < x_size; j++) {
+                        result[i][j] = 0;
                     }
                 }
 
-                MPI_File_close(&data);
-
-                for (int i = 0; i < y_size; i++) {
-                    free(result[i]);
+                for (int i = 0; i < stopped_cnt; i++) {
+                    result[stopped[i].y][stopped[i].x * size + stopped[i].init_node] += 1;
                 }
-                free(result);
+                int bytes_st = (l * a) * sizeof(int) * size;
+                int bytes_line = ((l * l) * b_tbl * a + l * a_tbl) * sizeof (int) * size;
+
+                for (int y = 0; y < l; y++) {
+                    MPI_File_set_view(data, bytes_line + bytes_st * y, MPI_INT, MPI_INT, "native", MPI_INFO_NULL);
+                    MPI_File_write(data, result[y], l * size, MPI_INT, MPI_STATUS_IGNORE);;
+                }
+
+                MPI_File_close(&data);
             }
         }
     }
@@ -347,4 +337,3 @@ int main(int argc, char **argv) {
     }
     MPI_Finalize();
     return 0;
-}
