@@ -46,6 +46,49 @@ int get_direction(double left,double right, double up, double down){
     }
 }
 
+/*void write_data(particle_ctx_t * completed, int completed_size, int l, int size, int a, int  b, int rank){
+        MPI_File data;
+        MPI_File_delete("data.bin", MPI_INFO_NULL);
+        MPI_File_open(MPI_COMM_WORLD, "data.bin", MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &data);
+
+        int a_tbl = rank % a;
+        int b_tbl = rank / a;
+        int y_size = l;
+        int x_size = l * size;
+
+        int **result = calloc(y_size, sizeof(int*));
+        for(int i = 0; i < y_size; i++) {
+            result[i] = calloc(x_size, sizeof(int));
+        }
+
+        for (int i = 0; i < stopped_cnt; i++) {
+            int y = stopped[i].y;
+            int x = stopped[i].x;
+            int init_node = stopped[i].init_node;
+            result[y][x * size + init_node]++;
+        }
+
+        int bytes_line = l * size * a * sizeof(int);
+        int bytes_sq = bytes_line * b_tbl * l;
+
+        for (int y_i = 0; y_i < y_size; y_i++) {
+            for (int x_i = 0; x_i < l; x_i++) {
+                int bytes_y_i = bytes_sq + bytes_line * y_i;
+                int bytes_f = bytes_y_i + a_tbl * l * size * sizeof(int);
+                int bytes_x_i = bytes_f + x_i * size * sizeof(int);
+                MPI_File_set_view(data, bytes_x_i, MPI_INT, MPI_INT, "native", MPI_INFO_NULL);
+                MPI_File_write(data, &result[y_i][x_i * size], size, MPI_INT, MPI_STATUS_IGNORE);
+            }
+        }
+
+        MPI_File_close(&data);
+
+        for (int p = 0; p < y_size; p++) {
+            free(result[p]);
+        }
+        free(result);
+}*/
+
 void random_walk(int rank,
                  int size,
                  int l,
@@ -264,29 +307,41 @@ void random_walk(int rank,
                 MPI_File_open(MPI_COMM_WORLD, "data.bin", MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &data);
 
                 int a_tbl = rank % a;
-                int b_tbl= rank / a;
+                int b_tbl = rank / a;
                 int y_size = l;
                 int x_size = l * size;
 
-                int result[y_size][x_size];
-                for (int i = 0; i < y_size; i++) {
-                    for (int j = 0; j < x_size; j++) {
-                        result[i][j] = 0;
-                    }
+                int **result = calloc(y_size, sizeof(int*));
+                for(int i = 0; i < y_size; i++) {
+                    result[i] = calloc(x_size, sizeof(int));
                 }
 
                 for (int i = 0; i < stopped_cnt; i++) {
-                    result[stopped[i].y][stopped[i].x * size + stopped[i].init_node] += 1;
+                    int y = stopped[i].y;
+                    int x = stopped[i].x;
+                    int init_node = stopped[i].init_node;
+                    result[y][x * size + init_node]++;
                 }
-                int bytes_st = (l * a) * sizeof(int) * size;
-                int bytes_line = ((l * l) * b_tbl * a + l * a_tbl) * sizeof (int) * size;
 
-                for (int y = 0; y < l; y++) {
-                    MPI_File_set_view(data, bytes_line + bytes_st * y, MPI_INT, MPI_INT, "native", MPI_INFO_NULL);
-                    MPI_File_write(data, result[y], l * size, MPI_INT, MPI_STATUS_IGNORE);;
+                int bytes_line = l * size * a * sizeof(int);
+                int bytes_sq = bytes_line * b_tbl * l;
+
+                for (int y_i = 0; y_i < y_size; y_i++) {
+                    for (int x_i = 0; x_i < l; x_i++) {
+                        int bytes_y_i = bytes_sq + bytes_line * y_i;
+                        int bytes_f = bytes_y_i + a_tbl * l * size * sizeof(int);
+                        int bytes_x_i = bytes_f + x_i * size * sizeof(int);
+                        MPI_File_set_view(data, bytes_x_i, MPI_INT, MPI_INT, "native", MPI_INFO_NULL);
+                        MPI_File_write(data, &result[y_i][x_i * size], size, MPI_INT, MPI_STATUS_IGNORE);
+                    }
                 }
 
                 MPI_File_close(&data);
+
+                for (int i = 0; i < y_size; i++)
+                    free(result[i]);
+
+                free(result);
             }
         }
     }
