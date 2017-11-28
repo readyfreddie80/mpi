@@ -22,7 +22,7 @@ typedef struct particle_ctx_t {
 void push(particle_ctx_t **array, int *n, int *capacity, particle_ctx_t *element) {
     if(*n >= *capacity) {
         *capacity *= 2;
-        *array = (particle_ctx_t*)realloc(*array, *capacity * sizeof(particle_ctx_t));
+        *array = (particle_ctx_t*)realloc(*array, (*capacity) * sizeof(particle_ctx_t));
     }
     (*array)[*n] = *element;
     (*n)++;
@@ -46,6 +46,49 @@ int get_direction(double left,double right, double up, double down){
     }
 }
 
+/*void write_data(particle_ctx_t * completed, int completed_size, int l, int size, int a, int  b, int rank){
+        MPI_File data;
+        MPI_File_delete("data.bin", MPI_INFO_NULL);
+        MPI_File_open(MPI_COMM_WORLD, "data.bin", MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &data);
+
+        int a_tbl = rank % a;
+        int b_tbl = rank / a;
+        int y_size = l;
+        int x_size = l * size;
+
+        int **result = calloc(y_size, sizeof(int*));
+        for(int i = 0; i < y_size; i++) {
+            result[i] = calloc(x_size, sizeof(int));
+        }
+
+        for (int i = 0; i < stopped_cnt; i++) {
+            int y = stopped[i].y;
+            int x = stopped[i].x;
+            int init_node = stopped[i].init_node;
+            result[y][x * size + init_node]++;
+        }
+
+        int bytes_line = l * size * a * sizeof(int);
+        int bytes_sq = bytes_line * b_tbl * l;
+
+        for (int y_i = 0; y_i < y_size; y_i++) {
+            for (int x_i = 0; x_i < l; x_i++) {
+                int bytes_y_i = bytes_sq + bytes_line * y_i;
+                int bytes_f = bytes_y_i + a_tbl * l * size * sizeof(int);
+                int bytes_x_i = bytes_f + x_i * size * sizeof(int);
+                MPI_File_set_view(data, bytes_x_i, MPI_INT, MPI_INT, "native", MPI_INFO_NULL);
+                MPI_File_write(data, &result[y_i][x_i * size], size, MPI_INT, MPI_STATUS_IGNORE);
+            }
+        }
+
+        MPI_File_close(&data);
+
+        for (int p = 0; p < y_size; p++) {
+            free(result[p]);
+        }
+        free(result);
+}*/
+
 void random_walk(int rank,
                  int size,
                  int l,
@@ -58,7 +101,7 @@ void random_walk(int rank,
                  double p_u,
                  double p_d) {
 
-    omp_init_lock(&lock);
+
 
     int is_stop = 0;
 
@@ -68,10 +111,10 @@ void random_walk(int rank,
 
     int send_to_cnt[4];
     int send_to_capacity[4];
-    particle_ctx_t *send_to[4];
+    particle_ctx_t **send_to = (particle_ctx_t**)malloc(4 * sizeof(particle_ctx_t*));
 
     int receive_from_capacity[4];
-    particle_ctx_t *receive_from[4];
+    particle_ctx_t **receive_from = (particle_ctx_t**)malloc(4 * sizeof(particle_ctx_t*));
 
     for(int i = 0; i < 4; i++){
         send_to[i] = (particle_ctx_t*)malloc(N * sizeof(particle_ctx_t));
@@ -108,6 +151,7 @@ void random_walk(int rank,
     particle_ctx_t *stopped = (particle_ctx_t*) malloc(N * sizeof(particle_ctx_t));
     int *all_nodes = (int*)malloc(sizeof(int) * size);
 
+    omp_init_lock(&lock);
     omp_set_lock(&lock);
 
     #pragma omp parallel
@@ -115,6 +159,122 @@ void random_walk(int rank,
         #pragma omp single nowait
         {
             #pragma omp task
+            {
+                int *seeds = (int*)malloc(size * sizeof(int));
+                if (rank == MASTER){
+                      srand(time(NULL));
+                      for (int i = 0; i < size; i++)
+                        seeds[i] = (int)rand();
+                }
+                int seed;
+                MPI_Scatter(seeds, 1, MPI_INT, &seed, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
+                free(seeds);
+
+                srand(seed);
+                for(int i = 0; i < N; i++) {
+                    particles[i].x = rand() % l;
+                    particles[i].y = rand() % l;
+                    particles[i].n = n;
+                    particles[i].init_node = rank;
+                }
+
+                omp_unset_lock(&lock);
+
+                while (!is_stop) {
+
+                    omp_set_lock(&lock);
+                    MPI_Request* requests = (MPI_Request*)malloc(sizeof(MPI_Request) * 8);
+
+                    for(int i = 0; i < 4; i++)
+                        MPI_Isend(&send_to_cnt[i], 1, MPI_INT, neighbor[i], i, MPI_COMM_WORLD, requests + i);
+                    for(int i = 0; i < 4; i++)
+                        MPI_Irecv(&receive_from_capacity[i], 1, MPI_INT, neighbor[i], receive_tags[i], MPI_COMM_WORLD, requests + 4 + i);
+                    MPI_Waitall(8, requests, MPI_STATUS_IGNORE);
+
+                    MPI_Request* req = (MPI_Request*) malloc(sizeof(MPI_Request) * 8);
+                    for(int i = 0; i < 4; i++)
+                        receive_from[i] = (particle_ctx_t*)malloc(receive_from_capacity[i] * sizeof(particle_ctx_t));
+                    for(int i = 0; i < 4; i++)
+                        MPI_Issend(send_to[i], sizeof(particle_ctx_t) * send_to_cnt[i], MPI_BYTE, neighbor[i], i, MPI_COMM_WORLD, req + i);
+                    for(int i = 0; i < 4; i++)
+                         MPI_Irecv(receive_from[i], sizeof(particle_ctx_t) * receive_from_capacity[i], MPI_BYTE, neighbor[i], receive_tags[i], MPI_COMM_WORLD, req + 4 + i);
+                    MPI_Waitall(8, req, MPI_STATUS_IGNORE);
+                    free(requests);
+                    free(req);
+
+                    for(int i = 0; i < 4; i++){
+                        for (int j = 0; j < receive_from_capacity[i]; j++) {
+                            push(&particles, &particles_cnt, &particles_capacity, receive_from[i] + j);
+                        }
+                        free(receive_from[i]);
+                        send_to_cnt[i] = 0;
+                    }
+
+                    int *all_stopped_cnt = (int*)malloc(sizeof(int));;
+                    MPI_Reduce(&stopped_cnt, all_stopped_cnt, 1, MPI_INT, MPI_SUM, MASTER, MPI_COMM_WORLD);
+
+                    MPI_Barrier(MPI_COMM_WORLD);
+
+                    if (rank == MASTER) {
+                        if (*all_stopped_cnt == size * N) {
+                        is_stop = 1;
+                        }
+                    }
+                    free(all_stopped_cnt);
+                    MPI_Bcast(&is_stop, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
+
+                    if (is_stop) {
+                        MPI_Gather(&stopped_cnt, 1, MPI_INT, all_nodes, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
+                    }
+                    omp_unset_lock(&lock);
+                }
+
+                MPI_Barrier(MPI_COMM_WORLD);
+
+
+                MPI_File data;
+                MPI_File_delete("data.bin", MPI_INFO_NULL);
+                MPI_File_open(MPI_COMM_WORLD, "data.bin", MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &data);
+
+                int a_tbl = rank % a;
+                int b_tbl = rank / a;
+                int y_size = l;
+                int x_size = l * size;
+
+                int **result = calloc(y_size, sizeof(int*));
+                for(int i = 0; i < y_size; i++) {
+                    result[i] = calloc(x_size, sizeof(int));
+                }
+
+                for (int i = 0; i < stopped_cnt; i++) {
+                    int y = stopped[i].y;
+                    int x = stopped[i].x;
+                    int init_node = stopped[i].init_node;
+                    result[y][x * size + init_node]++;
+                }
+
+                int bytes_line = l * size * a * sizeof(int);
+                int bytes_sq = bytes_line * b_tbl * l;
+
+                for (int y_i = 0; y_i < y_size; y_i++) {
+                    for (int x_i = 0; x_i < l; x_i++) {
+                        int bytes_y_i = bytes_sq + bytes_line * y_i;
+                        int bytes_f = bytes_y_i + a_tbl * l * size * sizeof(int);
+                        int bytes_x_i = bytes_f + x_i * size * sizeof(int);
+                        MPI_File_set_view(data, bytes_x_i, MPI_INT, MPI_INT, "native", MPI_INFO_NULL);
+                        MPI_File_write(data, &result[y_i][x_i * size], size, MPI_INT, MPI_STATUS_IGNORE);
+                    }
+                }
+
+                MPI_File_close(&data);
+
+                for (int i = 0; i < y_size; i++)
+                    free(result[i]);
+
+                free(result);
+            }
+
+              #pragma omp task
             {
                 while (!is_stop) {
                     omp_set_lock(&lock);
@@ -186,124 +346,11 @@ void random_walk(int rank,
                     omp_unset_lock(&lock);
                 }
             }
-            #pragma omp task
-            {
-                int *seeds = (int*)malloc(size * sizeof(int));
-                if (rank == MASTER){
-                      srand(time(NULL));
-                      for (int i = 0; i < size; i++)
-                        seeds[i] = (int)rand();
-                }
-                int seed;
-                MPI_Scatter(seeds, 1, MPI_INT, &seed, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
-                free(seeds);
-
-                srand(seed);
-                for(int i = 0; i < N; i++) {
-                    particles[i].x = rand() % l;
-                    particles[i].y = rand() % l;
-                    particles[i].n = n;
-                    particles[i].init_node = rank;
-                }
-
-                omp_unset_lock(&lock);
-
-                while (!is_stop) {
-
-                    omp_set_lock(&lock);
-                    MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request) * 8);
-
-                    for(int i = 0; i < 4; i++)
-                        MPI_Isend(&send_to_cnt[i], 1, MPI_INT, neighbor[i], i, MPI_COMM_WORLD, requests + i);
-                    for(int i = 0; i < 4; i++)
-                        MPI_Irecv(&receive_from_capacity[i], 1, MPI_INT, neighbor[i], receive_tags[i], MPI_COMM_WORLD, requests + 4 + i);
-                    MPI_Waitall(8, requests, MPI_STATUS_IGNORE);
-
-                    MPI_Request* req = (MPI_Request*) malloc(sizeof(MPI_Request) * 8);
-                    for(int i = 0; i < 4; i++)
-                        receive_from[i] = (particle_ctx_t*)malloc(receive_from_capacity[i] * sizeof(particle_ctx_t));
-                    for(int i = 0; i < 4; i++)
-                        MPI_Issend(send_to[i], sizeof(particle_ctx_t) * send_to_cnt[i], MPI_BYTE, neighbor[i], i, MPI_COMM_WORLD, req + i);
-                    for(int i = 0; i < 4; i++)
-                         MPI_Irecv(receive_from[i], sizeof(particle_ctx_t) * receive_from_capacity[i], MPI_BYTE, neighbor[i], receive_tags[i], MPI_COMM_WORLD, req + 4 + i);
-                    MPI_Waitall(8, req, MPI_STATUS_IGNORE);
-                    free(requests);
-                    free(req);
-
-                    for(int i = 0; i < 4; i++){
-                        for (int j = 0; j < receive_from_capacity[i]; j++) {
-                            push(&particles, &particles_cnt, &particles_capacity, receive_from[i] + j);
-                        }
-                        free(receive_from[i]);
-                        send_to_cnt[i] = 0;
-                    }
-
-                    int all_stopped_cnt;
-                    MPI_Reduce(&stopped_cnt, &all_stopped_cnt, 1, MPI_INT, MPI_SUM, MASTER, MPI_COMM_WORLD);
-
-                    MPI_Barrier(MPI_COMM_WORLD);
-
-                    if (rank == MASTER) {
-                        if (all_stopped_cnt == size * N) {
-                        is_stop = 1;
-                        }
-                    }
-                    MPI_Bcast(&is_stop, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
-
-                    if (is_stop) {
-                        MPI_Gather(&stopped_cnt, 1, MPI_INT, all_nodes, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
-                    }
-                    omp_unset_lock(&lock);
-                }
-
-                MPI_Barrier(MPI_COMM_WORLD);
-
-
-                MPI_File data;
-                MPI_File_delete("data.bin", MPI_INFO_NULL);
-                MPI_File_open(MPI_COMM_WORLD, "data.bin", MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &data);
-
-                int a_tbl = rank % a;
-                int b_tbl = rank / a;
-                int y_size = l;
-                int x_size = l * size;
-
-                int **result = calloc(y_size, sizeof(int*));
-                for(int i = 0; i < y_size; i++) {
-                    result[i] = calloc(x_size, sizeof(int));
-                }
-
-                for (int i = 0; i < stopped_cnt; i++) {
-                    int y = stopped[i].y;
-                    int x = stopped[i].x;
-                    int init_node = stopped[i].init_node;
-                    result[y][x * size + init_node]++;
-                }
-
-                int bytes_line = l * size * a * sizeof(int);
-                int bytes_sq = bytes_line * b_tbl * l;
-
-                for (int y_i = 0; y_i < y_size; y_i++) {
-                    for (int x_i = 0; x_i < l; x_i++) {
-                        int bytes_y_i = bytes_sq + bytes_line * y_i;
-                        int bytes_f = bytes_y_i + a_tbl * l * size * sizeof(int);
-                        int bytes_x_i = bytes_f + x_i * size * sizeof(int);
-                        MPI_File_set_view(data, bytes_x_i, MPI_INT, MPI_INT, "native", MPI_INFO_NULL);
-                        MPI_File_write(data, &result[y_i][x_i * size], size, MPI_INT, MPI_STATUS_IGNORE);
-                    }
-                }
-
-                MPI_File_close(&data);
-
-                for (int i = 0; i < y_size; i++)
-                    free(result[i]);
-
-                free(result);
-            }
         }
     }
-    #pragma omp taskwait
-        omp_destroy_lock(&lock);
+
+#pragma omp taskwait
+    omp_destroy_lock(&lock);
 
     free(all_nodes);
     free(stopped);
@@ -311,6 +358,8 @@ void random_walk(int rank,
     for(int i = 0; i < 4; i++) {
         free(send_to[i]);
     }
+    free(send_to);
+    free(receive_from);
 }
 
 
