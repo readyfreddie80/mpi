@@ -188,7 +188,7 @@ void random_walk(int rank,
 
                 MPI_Barrier(MPI_COMM_WORLD);
 
-
+/*
                 MPI_File data;
                 MPI_File_delete("data.bin", MPI_INFO_NULL);
                 MPI_File_open(MPI_COMM_WORLD, "data.bin", MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &data);
@@ -229,7 +229,8 @@ void random_walk(int rank,
                     free(result[i]);
 
                 free(result);
-            }
+ */
+ 	}
 
               #pragma omp task
             {
