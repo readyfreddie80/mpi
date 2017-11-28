@@ -10,6 +10,7 @@
 
 omp_lock_t lock;
 int steps = 100;
+double start, end;
 
 
 typedef struct particle_ctx_t {
@@ -230,7 +231,18 @@ void random_walk(int rank,
 
                 free(result);
  */
- 	}
+		if(rank == MASTER) {
+        		end = MPI_Wtime();
+        		double delta = end - start;
+        		FILE *f = fopen("stats.txt", "w");
+        		fprintf(f, "%d %d %d %d %d %f %f %f %f, %fs\n", l, a, b, n, N, p_l, p_r, p_u, p_d, delta);
+			for (int i = 0; i < size; i+) {
+                		fprintf(file, "%d: %d\n", i, all_nodes[i]);
+           		}
+        		fclose(f);
+    		}
+
+	    }
 
               #pragma omp task
             {
@@ -340,20 +352,12 @@ int main(int argc, char **argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     omp_set_num_threads(2);
 
-    double start, end;
+    
     if(rank == MASTER) {
         start =  MPI_Wtime();
     }
     random_walk(rank, size, l, a, b, n, N, p_l, p_r, p_u, p_d);
 
-    if(rank == MASTER) {
-        end = MPI_Wtime();
-        double delta = end - start;
-        FILE *f = fopen("stats.txt", "w");
-        fprintf(f, "%d %d %d %d %d %f %f %f %f, %fs", l, a, b, n, N, p_l, p_r, p_u, p_d, delta);
-
-        fclose(f);
-    }
     MPI_Finalize();
     return 0;
 }
