@@ -168,7 +168,7 @@ void random_walk(int rank,
                         send_to_cnt[i] = 0;
                     }
 
-                    int *all_stopped_cnt = (int*)malloc(sizeof(int));;
+                    int *all_stopped_cnt = (int*)malloc(sizeof(int));
                     MPI_Reduce(&stopped_cnt, all_stopped_cnt, 1, MPI_INT, MPI_SUM, MASTER, MPI_COMM_WORLD);
 
                     MPI_Barrier(MPI_COMM_WORLD);
