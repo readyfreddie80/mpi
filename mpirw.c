@@ -236,8 +236,8 @@ void random_walk(int rank,
         		double delta = end - start;
         		FILE *f = fopen("stats.txt", "w");
         		fprintf(f, "%d %d %d %d %d %f %f %f %f, %fs\n", l, a, b, n, N, p_l, p_r, p_u, p_d, delta);
-			for (int i = 0; i < size; i+) {
-                		fprintf(file, "%d: %d\n", i, all_nodes[i]);
+			for (int i = 0; i < size; i++) {
+                		fprintf(f, "%d: %d\n", i, all_nodes[i]);
            		}
         		fclose(f);
     		}
